@@ -14,8 +14,10 @@ const path = require('path');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const PORT = process.env.PORT || 3000;
-const CAM_KEY = process.env.CAM_KEY || '';
-const DASH_PASS = process.env.DASH_PASS || '';
+// accept a few spellings so a typo in the Render env-var name doesn't silently disable auth
+const envFirst = (...names) => { for (const n of names) if (process.env[n]) return String(process.env[n]).trim(); return ''; };
+const CAM_KEY = envFirst('CAM_KEY', 'CAMKEY', 'CAM_PASS', 'CAMERA_KEY');
+const DASH_PASS = envFirst('DASH_PASS', 'DASHPASS', 'DASH_KEY', 'DASHKEY', 'DASH_PASSWORD', 'DASHBOARD_PASSWORD', 'DASHBOARD_PASS');
 const OFFLINE_MS = 15000;          // no frame for this long -> OFFLINE
 const MAX_BUFFERED = 1_000_000;    // drop frames for a slow viewer instead of queueing
 
