@@ -1,0 +1,16 @@
+{
+  "name": "esp32-cloud-cctv",
+  "version": "1.0.0",
+  "description": "Relay server: ESP32-S3 cameras push JPEG frames, browsers watch them live at one permanent URL",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.17.0"
+  }
+}

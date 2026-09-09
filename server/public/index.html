@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cloud CCTV</title>
+<style>
+  :root{--bg:#0b0d10;--panel:#12151a;--line:#22262e;--accent:#00adb5;--on:#00ff88;--off:#ff4d4d;--dim:#778}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:#e6e6e6;font-family:Segoe UI,system-ui,Arial,sans-serif}
+  header{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;background:var(--panel);border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:18px;letter-spacing:2px;color:var(--accent)}
+  .meta{font-family:monospace;font-size:13px;color:#9aa;display:flex;gap:16px;align-items:center}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--off);margin-right:6px}
+  .dot.ok{background:var(--on)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;padding:14px}
+  .cam{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;cursor:pointer}
+  .cam.full{position:fixed;inset:0;z-index:10;border-radius:0;display:flex;flex-direction:column}
+  .cam.full .view{flex:1;aspect-ratio:auto}
+  .bar{display:flex;justify-content:space-between;padding:7px 12px;background:#181c23;font-size:13px;font-weight:600}
+  .tag{font-size:12px}.on{color:var(--on)}.off{color:var(--off)}
+  .view{position:relative;background:#000;aspect-ratio:4/3}
+  .view img{width:100%;height:100%;object-fit:contain;display:block}
+  .msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#666;font-size:14px;letter-spacing:1px}
+  .stamp{position:absolute;left:8px;bottom:6px;font-family:monospace;font-size:12px;color:#fff;text-shadow:0 0 3px #000}
+  .empty{padding:60px 20px;text-align:center;color:var(--dim)}
+  #login{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:20}
+  #login form{background:var(--panel);border:1px solid var(--line);padding:24px;border-radius:10px;display:flex;flex-direction:column;gap:10px;min-width:280px}
+  input{padding:10px;border-radius:6px;border:1px solid var(--line);background:#0b0d10;color:#fff;font-size:15px}
+  button{padding:10px;border-radius:6px;border:0;background:var(--accent);color:#000;font-weight:700;cursor:pointer}
+  .err{color:var(--off);font-size:13px;min-height:16px}
+  footer{padding:8px 18px;font-size:12px;color:#667}
+</style>
+</head>
+<body>
+<header>
+  <h1>CLOUD CCTV</h1>
+  <div class="meta"><span><span class="dot" id="dot"></span><span id="conn">connecting</span></span><span id="viewers"></span><span id="clock">--:--:--</span></div>
+</header>
+<div class="grid" id="grid"><div class="empty" id="empty">Waiting for cameras to connect...</div></div>
+<footer>Click a camera to go full screen. Cameras stream at full speed only while someone is watching.</footer>
+
+<div id="login" hidden>
+  <form id="loginForm">
+    <div style="color:var(--accent);font-weight:700;letter-spacing:1px">DASHBOARD PASSWORD</div>
+    <input type="password" id="pass" placeholder="password" autofocus>
+    <button type="submit">Watch</button>
+    <div class="err" id="err"></div>
+  </form>
+</div>
+
+<script>
+const grid=document.getElementById('grid'), empty=document.getElementById('empty');
+const tiles=new Map();      // id -> {el,img,tag,msg,stamp,fps,url}
+let ws, pass=null, needAuth=false, retry=1000;
+try{ pass=localStorage.getItem('cctv_pass'); }catch(e){}
+
+function setConn(ok,text){document.getElementById('dot').className='dot'+(ok?' ok':'');document.getElementById('conn').textContent=text;}
+
+function tile(id){
+  let t=tiles.get(id); if(t) return t;
+  empty.hidden=true;
+  const el=document.createElement('div'); el.className='cam';
+  el.innerHTML=`<div class="bar"><span>${id.toUpperCase()}</span><span><span class="fps" style="color:#778;font-weight:400;margin-right:10px"></span><span class="tag off">&#9679; OFFLINE</span></span></div>
+    <div class="view"><img alt=""><div class="msg">NO SIGNAL</div><div class="stamp"></div></div>`;
+  el.onclick=()=>{el.classList.toggle('full');};
+  // keep tiles sorted by id
+  const ids=[...tiles.keys(),id].sort(); const next=ids[ids.indexOf(id)+1];
+  grid.insertBefore(el, next?tiles.get(next).el:null);
+  t={el,img:el.querySelector('img'),tag:el.querySelector('.tag'),msg:el.querySelector('.msg'),stamp:el.querySelector('.stamp'),fps:el.querySelector('.fps'),url:null};
+  tiles.set(id,t); return t;
+}
+
+function showFrame(id,blob){
+  const t=tile(id);
+  const url=URL.createObjectURL(blob);
+  t.img.onload=()=>{ if(t.url) URL.revokeObjectURL(t.url); t.url=url; t.msg.hidden=true; };
+  t.img.src=url;
+  t.stamp.textContent=new Date().toLocaleTimeString();
+}
+
+function applyStatus(s){
+  document.getElementById('viewers').textContent=`${s.viewers} watching`;
+  for(const c of s.cams){
+    const t=tile(c.id);
+    t.tag.innerHTML=c.online?'&#9679; LIVE':'&#9679; OFFLINE';
+    t.tag.className='tag '+(c.online?'on':'off');
+    t.fps.textContent=c.online?`${c.fps} fps`:(c.ago<3600?`last seen ${c.ago}s ago`:'');
+    if(!c.online){ t.msg.textContent='OFFLINE'; t.msg.hidden=false; }
+  }
+}
+
+function connect(){
+  const proto=location.protocol==='https:'?'wss':'ws';
+  ws=new WebSocket(`${proto}://${location.host}/ws`);
+  ws.binaryType='blob';
+  ws.onopen=()=>{ retry=1000; setConn(true,'connected'); };
+  ws.onclose=()=>{ setConn(false,'reconnecting'); setTimeout(connect,retry); retry=Math.min(retry*2,15000); };
+  ws.onerror=()=>ws.close();
+  ws.onmessage=async(ev)=>{
+    if(typeof ev.data==='string'){
+      const m=JSON.parse(ev.data);
+      if(m.type==='hello'){ needAuth=m.needAuth; if(needAuth){ if(pass) ws.send(JSON.stringify({type:'auth',pass})); else showLogin(); } }
+      else if(m.type==='auth'){ if(m.ok){ hideLogin(); try{localStorage.setItem('cctv_pass',pass);}catch(e){} } else { pass=null; showLogin('Wrong password'); } }
+      else if(m.type==='status') applyStatus(m);
+      return;
+    }
+    // binary: [idLen][id][jpeg]
+    const head=new Uint8Array(await ev.data.slice(0,1).arrayBuffer());
+    const n=head[0];
+    const id=await ev.data.slice(1,1+n).text();
+    showFrame(id, ev.data.slice(1+n,ev.data.size,'image/jpeg'));
+  };
+}
+
+function showLogin(err=''){ document.getElementById('login').hidden=false; document.getElementById('err').textContent=err; document.getElementById('pass').focus(); }
+function hideLogin(){ document.getElementById('login').hidden=true; }
+document.getElementById('loginForm').onsubmit=(e)=>{ e.preventDefault(); pass=document.getElementById('pass').value; if(ws&&ws.readyState===1) ws.send(JSON.stringify({type:'auth',pass})); };
+
+setInterval(()=>{document.getElementById('clock').textContent=new Date().toLocaleTimeString();},1000);
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.querySelectorAll('.cam.full').forEach(el=>el.classList.remove('full')); });
+connect();
+</script>
+</body>
+</html>

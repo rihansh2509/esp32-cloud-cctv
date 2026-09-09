@@ -1,0 +1,16 @@
+# Render Blueprint - deploy with "New +" -> "Blueprint" and point at this repo.
+services:
+  - type: web
+    name: esp32-cloud-cctv
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: CAM_KEY        # secret the ESP32s must send; you type it into the cams with  key=...
+        sync: false
+      - key: DASH_PASS      # password the web page asks for
+        sync: false
