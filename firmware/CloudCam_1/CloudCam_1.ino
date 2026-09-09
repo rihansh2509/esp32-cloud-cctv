@@ -14,6 +14,7 @@
  *   key=THE_CAM_KEY_YOU_SET_ON_RENDER
  *   id=cam1                (optional, default below)
  *   show                   (print current config)
+ *   scan                   (list visible 2.4 GHz Wi-Fi networks)
  *   clear                  (erase config)   reboot
  *
  * Settings are saved to flash and survive reboots/re-uploads.
@@ -22,7 +23,7 @@
  * fast as it can (~5-10 fps). When nobody is watching it sends one frame
  * every 5 s, which also keeps the free Render instance awake.
  *
- * Arduino IDE (Tools): ESP32S3 Dev Module | USB CDC On Boot = Enabled
+ * Arduino IDE (Tools): ESP32S3 Dev Module | USB CDC On Boot = Disabled (UART USB port)
  *   PSRAM = OPI PSRAM | Flash Size = 16MB | Partition 16M (3MB APP/9.9MB FATFS)
  */
 #include "esp_camera.h"
@@ -122,13 +123,13 @@ void printHelp() {
   Serial.println("Commands (type one per line):");
   Serial.println("  ssid=<wifi name>     pass=<wifi password>");
   Serial.println("  host=https://xxxx.onrender.com   key=<CAM_KEY from Render>");
-  Serial.println("  id=cam1 | show | clear | reboot | help");
+  Serial.println("  id=cam1 | show | scan | clear | reboot | help");
 }
 
 void wifiStart() {
-  if (!cfgSsid.length()) return;
-  WiFi.disconnect(false, false);
-  delay(100);
+  if (!cfgSsid.length() || !cfgPass.length()) return;   // wait until both are set
+  WiFi.disconnect(true, false);
+  delay(200);
   WiFi.begin(cfgSsid.c_str(), cfgPass.c_str());
   lastWifiTry = millis();
   Serial.printf("[WIFI] connecting to \"%s\" ...\n", cfgSsid.c_str());
@@ -156,6 +157,15 @@ void handleCommand(String line) {
   else if (k == "key")  { cfgKey = v; prefs.putString("key", v); Serial.println("[OK] key saved"); }
   else if (k == "id")   { v.toLowerCase(); cfgId = v.length() ? v : DEFAULT_CAM_ID; prefs.putString("id", cfgId); httpReset(); Serial.printf("[OK] id = %s\n", cfgId.c_str()); }
   else if (k == "show") printConfig();
+  else if (k == "scan") {
+    Serial.println("[SCAN] scanning 2.4 GHz networks...");
+    int n = WiFi.scanNetworks();
+    for (int i = 0; i < n; i++)
+      Serial.printf("  %-32s  ch %2d  %4d dBm  %s\n", WiFi.SSID(i).c_str(), WiFi.channel(i), WiFi.RSSI(i),
+                    WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "open" : "secured");
+    if (n <= 0) Serial.println("  (none found)");
+    WiFi.scanDelete();
+  }
   else if (k == "help" || k == "?") printHelp();
   else if (k == "clear") { prefs.clear(); Serial.println("[OK] config erased, rebooting"); delay(300); ESP.restart(); }
   else if (k == "reboot") { Serial.println("rebooting"); delay(200); ESP.restart(); }

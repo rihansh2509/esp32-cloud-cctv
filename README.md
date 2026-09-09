@@ -51,7 +51,7 @@ Open the URL in any browser, enter `DASH_PASS`, and both cameras appear. The `[S
 
 ## 3. Flashing (already done for both boards, but for reference)
 
-Arduino IDE → Tools: ESP32S3 Dev Module, USB CDC On Boot = Enabled, PSRAM = OPI PSRAM,
+Arduino IDE → Tools: ESP32S3 Dev Module, **USB CDC On Boot = Disabled** (the boards are used through their UART USB port, so Serial goes to UART0), PSRAM = OPI PSRAM,
 Flash Size = 16MB, Partition = 16M Flash (3MB APP/9.9MB FATFS). Board package esp32 3.x.
 
 ## Troubleshooting
@@ -60,6 +60,7 @@ Flash Size = 16MB, Partition = 16M Flash (3MB APP/9.9MB FATFS). Board package es
 |---|---|
 | `[HTTP] server said 401` | `key=` on the camera does not match `CAM_KEY` on Render |
 | `[HTTP] failed: connection refused/lost` | Wrong `host=`, or Render is still deploying. Check the URL in a browser first |
+| Serial Monitor completely empty | Tools > USB CDC On Boot must be **Disabled** when plugged into the UART port (or Enabled when plugged into the native USB port). Wrong setting = output goes to the other connector |
 | `[WIFI] connecting ...` forever | Wrong ssid/pass, or 5 GHz-only network (ESP32 needs 2.4 GHz) |
 | `[CAM] init FAILED` | Wrong pin model — change the `#define CAMERA_MODEL_...` line |
 | Page says OFFLINE | Camera stopped posting; look at its Serial Monitor |
