@@ -128,7 +128,7 @@ void printHelp() {
 
 void wifiStart() {
   if (!cfgSsid.length() || !cfgPass.length()) return;   // wait until both are set
-  WiFi.disconnect(true, false);
+  WiFi.disconnect(false, false);
   delay(200);
   WiFi.begin(cfgSsid.c_str(), cfgPass.c_str());
   lastWifiTry = millis();
